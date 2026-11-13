@@ -1,0 +1,10 @@
+{
+  "token": "regent-put-ur-token-here",
+  "emoji": "💀",
+  "minDelayMs": 300,
+  "maxDelayMs": 900,
+  "onlyChannelIds": [],
+  "ignoreChannelIds": [],
+  "ignoreGuildIds": [],
+  "ignoreDMs": false
+}
