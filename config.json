@@ -6,5 +6,11 @@
   "onlyChannelIds": [],
   "ignoreChannelIds": [],
   "ignoreGuildIds": [],
-  "ignoreDMs": false
+  "ignoreDMs": false,
+  "selfReact": true,
+  "keywordReactions": [
+    { "word": "@everyone", "reaction": "☠️", "serverid": "1551568225123307552" },
+    { "word": "nga", "reaction": "☠️", "serverid": "1551568225123307552" },
+    { "word": "harmless", "reaction": "☠️", "dmid": "1570413099629023332" }
+  ]
 }
