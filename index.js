@@ -1,15 +1,17 @@
 const WebSocket = require("ws");
 const fs = require("fs");
 const path = require("path");
+const { createReactionMatcher } = require("./reaction-rules");
 
 const config = JSON.parse(fs.readFileSync(path.join(__dirname, "config.json"), "utf8"));
 const token = process.env.DISCORD_TOKEN || config.token;
 if (!token || token === "YOUR_USER_TOKEN") {
-  console.error("Put your token in config.json (or set DISCORD_TOKEN).");
+  console.error("Put your token in config.json.");
   process.exit(1);
 }
 
 const emoji = config.emoji || "💀";
+const matchReactions = createReactionMatcher(config);
 const minDelay = config.minDelayMs ?? 300;
 const maxDelay = Math.max(config.maxDelayMs ?? 900, minDelay);
 const only = new Set(config.onlyChannelIds || []);
@@ -23,8 +25,8 @@ const rand = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
 const queue = [];
 let working = false;
 
-function enqueue(channelId, messageId) {
-  queue.push({ channelId, messageId });
+function enqueue(channelId, messageId, reaction) {
+  queue.push({ channelId, messageId, reaction });
   if (!working) drain();
 }
 
@@ -38,17 +40,17 @@ async function drain() {
   working = false;
 }
 
-async function react({ channelId, messageId }, attempt) {
-  const url = `${API}/channels/${channelId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}/@me`;
+async function react({ channelId, messageId, reaction }, attempt) {
+  const url = `${API}/channels/${channelId}/messages/${messageId}/reactions/${encodeURIComponent(reaction)}/@me`;
   try {
     const res = await fetch(url, { method: "PUT", headers: { Authorization: token } });
-    if (res.status === 204) return console.log(`Reacted ${emoji} to ${messageId}`);
+    if (res.status === 204) return console.log(`Reacted ${reaction} to ${messageId}`);
     if (res.status === 429 && attempt < 5) {
       const body = await res.json().catch(() => ({}));
       const wait = Math.ceil((body.retry_after ?? 1) * 1000) + 250;
       console.log(`Rate limited, waiting ${wait}ms`);
       await sleep(wait);
-      return react({ channelId, messageId }, attempt + 1);
+      return react({ channelId, messageId, reaction }, attempt + 1);
     }
     if (res.status === 401) {
       console.error("Token rejected (401). Check your token.");
@@ -105,7 +107,7 @@ function connect() {
       console.error("Authentication failed. Check your token.");
       process.exit(1);
     }
-    console.log(`Disconnected (${code}), reconnecting in 5s...`);
+    console.log(`Disconnected (${code}), reconnecting in 5s...`); 
     setTimeout(connect, 5000);
   });
   ws.on("error", (e) => console.log("Socket error:", e.message));
@@ -118,16 +120,15 @@ function send(op, d) {
 function dispatch(t, d) {
   if (t === "READY") {
     myId = d.user.id;
-    console.log(`Logged in as ${d.user.username} — reacting ${emoji} to your own messages.`);
+    console.log(`Logged in as ${d.user.username} self-reactions ${config.selfReact === false ? "off" : `on (${emoji})`}, ${config.keywordReactions?.length ?? 0} keyword rules.`);
     return;
   }
-  if (t !== "MESSAGE_CREATE" || !d.author || d.author.id !== myId) return;
+  if (t !== "MESSAGE_CREATE" || !d.author || !myId) return;
   if (d.type !== 0 && d.type !== 19) return; // normal messages and replies only
   if (only.size && !only.has(d.channel_id)) return;
   if (ignoreCh.has(d.channel_id)) return;
   if (d.guild_id ? ignoreGuilds.has(d.guild_id) : config.ignoreDMs) return;
-  enqueue(d.channel_id, d.id);
+  for (const reaction of matchReactions(d, myId)) enqueue(d.channel_id, d.id, reaction);
 }
 
 connect();
-//Merry christmas guys!
